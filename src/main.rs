@@ -18,7 +18,7 @@ use sysinfo::{Components, System};
 use tao::event::{Event, StartCause};
 use tao::event_loop::{ControlFlow, EventLoopBuilder};
 use tao::platform::macos::{ActivationPolicy, EventLoopExtMacOS};
-use tray_icon::menu::{CheckMenuItem, Menu, MenuEvent, MenuId, MenuItem};
+use tray_icon::menu::{CheckMenuItem, Menu, MenuEvent, MenuId, MenuItem, PredefinedMenuItem};
 use tray_icon::{TrayIcon, TrayIconBuilder};
 use two_line::{Level, Seg};
 
@@ -192,9 +192,12 @@ fn main() {
     // Prime CPU so the first reading is a real delta, not 0%/garbage.
     sampler.sys.refresh_cpu_usage();
 
-    // Right-click menu: launch-at-login toggle + Quit.
+    // Right-click menu: disabled "Featherbar" header (so the app name is
+    // visible — the menu-bar icon is a numeric readout, not a glyph) +
+    // launch-at-login toggle + Quit.
     // SMAppService needs a real .app bundle (scripts/bundle.sh); from a bare
     // `cargo run` binary the item is shown disabled so it can't silently fail.
+    let title_item = MenuItem::new("Featherbar", false, None);
     let bundled = login_item::is_bundled();
     let login_item = CheckMenuItem::new(
         if bundled {
@@ -210,6 +213,9 @@ fn main() {
     let quit_item = MenuItem::new("Quit", true, None);
     let quit_id: MenuId = quit_item.id().clone();
     let menu = Menu::new();
+    menu.append(&title_item).expect("failed to build menu");
+    menu.append(&PredefinedMenuItem::separator())
+        .expect("failed to build menu");
     menu.append(&login_item).expect("failed to build menu");
     menu.append(&quit_item).expect("failed to build menu");
 
