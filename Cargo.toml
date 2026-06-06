@@ -1,0 +1,21 @@
+[package]
+name = "featherbar"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# Menu-bar (NSStatusItem) icon. Current as of Oct 2025; pairs with tao 0.34.
+tray-icon = "0.21"
+# Main-thread event loop. tray-icon's macOS path requires a running main-thread loop.
+tao = "0.34"
+# CPU / RAM stats. used_memory()/total_memory() return bytes since 0.30.
+sysinfo = "0.33"
+# Battery power draw in watts (energy_rate, SI units). Maintained fork of
+# rust-battery; requires Rust 1.89+. Library name is `starship_battery`.
+starship-battery = "0.10"
+
+# A release build keeps the binary small.
+[profile.release]
+opt-level = "z"
+lto = true
+strip = true
