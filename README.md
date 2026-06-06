@@ -15,9 +15,7 @@ ____
 
 A tiny, modular menu-bar (NSStatusItem) app in Rust that shows live stats as plain text in your menu bar:
 
-```
-RAM 47% · CPU 12% · 8.3W
-```
+![featherbar in the menu bar](https://raw.githubusercontent.com/nim444/featherbar/main/assets/menubar.png)
 
 Updates every 2 seconds. Right-click to quit. That's the whole app — and that's the point.
 
@@ -28,6 +26,7 @@ Updates every 2 seconds. Right-click to quit. That's the whole app — and that'
 - **Live stats in the menu bar**: RAM %, CPU %, and battery discharge watts, refreshed every 2s
 - **No Dock icon, no window**: `ActivationPolicy::Accessory` — it exists only in the menu bar
 - **No background threads**: a single main-thread `tao` event loop with `ControlFlow::WaitUntil` timer wakes
+- **Launch at login toggle**: right-click menu check item backed by `SMAppService` (when running as the `.app` bundle)
 - **Flat memory by design**: one `Sampler` owns all state; nothing grows, nothing leaks
 - **Measured footprint**: ~16–19 MB (`phys_footprint`, the Activity Monitor number) on an M-series MacBook Pro — and it stays there
 - **Modular metrics**: adding a stat is an enum variant + a match arm — nothing else changes
@@ -59,26 +58,34 @@ ___
 <details>
   <summary>2. Installation</summary>
 
-#### From Source
+#### As an .app bundle (recommended — enables the launch-at-login toggle)
 
 ```bash
-# Clone the repository
 git clone https://github.com/nim444/featherbar.git
 cd featherbar
 
-# Build and run
-cargo run --release
-
-# Or install the binary somewhere on your PATH
-cargo build --release
-cp target/release/featherbar /usr/local/bin/
+# Build the release binary and assemble Featherbar.app (ad-hoc signed)
+./scripts/bundle.sh
+cp -R target/Featherbar.app /Applications/
+open /Applications/Featherbar.app
 ```
 
-The reading appears in your menu bar immediately. There is no Dock icon and no window — right-click the menu-bar text and choose **Quit** to exit.
+#### As a bare binary
 
-#### Launch at login (optional)
+```bash
+# From crates.io
+cargo install featherbar
+featherbar
 
-Add `featherbar` as a Login Item: **System Settings → General → Login Items → Open at Login → +** and select the built binary.
+# Or from a checkout
+cargo run --release
+```
+
+The reading appears in your menu bar immediately. There is no Dock icon and no window — right-click the menu-bar text for the menu and **Quit**.
+
+#### Launch at login
+
+Right-click the menu-bar reading and check **Launch at login**. The toggle uses Apple's `SMAppService` API, which only works from a real `.app` bundle — from a bare `cargo run` binary the item is shown disabled. Verify the registration anytime in **System Settings → General → Login Items**.
 
 </details>
 
@@ -87,14 +94,19 @@ Add `featherbar` as a Login Item: **System Settings → General → Login Items 
 
 ```
 ├── src/
-│   └── main.rs          # The entire app: Metric enum, Sampler, event loop
-├── Cargo.toml           # 4 dependencies, size-optimized release profile
+│   ├── main.rs          # Metric enum, Sampler, event loop, menu
+│   └── login_item.rs    # Launch-at-login via SMAppService
+├── scripts/
+│   └── bundle.sh        # Assemble Featherbar.app from the release binary
+├── assets/
+│   └── menubar.png
+├── Cargo.toml           # 5 dependencies, size-optimized release profile
 ├── Cargo.lock
 ├── LICENSE              # Apache-2.0
 └── README.md
 ```
 
-One file on purpose. The app is small enough that splitting it up would only add indirection.
+Two source files on purpose. The app is small enough that splitting it up further would only add indirection.
 
 </details>
 

@@ -2,6 +2,14 @@
 name = "featherbar"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.89"
+description = "Featherweight macOS menu-bar system monitor — RAM, CPU, and power watts with zero background threads and flat memory"
+license = "Apache-2.0"
+repository = "https://github.com/nim444/featherbar"
+readme = "README.md"
+keywords = ["macos", "menubar", "system-monitor", "tray", "monitoring"]
+categories = ["os::macos-apis", "command-line-utilities", "visualization"]
+exclude = ["assets/", "scripts/", ".github/"]
 
 [dependencies]
 # Menu-bar (NSStatusItem) icon. Current as of Oct 2025; pairs with tao 0.34.
