@@ -1,6 +1,6 @@
 [package]
 name = "featherbar"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 rust-version = "1.89"
 description = "Featherweight macOS menu-bar system monitor — CPU, RAM, power, and temperature on two color-coded lines, zero background threads, flat memory"

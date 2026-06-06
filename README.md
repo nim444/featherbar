@@ -38,7 +38,7 @@ Updates every 2 seconds. Right-click for launch-at-login and Quit. That's the wh
 - **No background threads**: a single main-thread `tao` event loop with `ControlFlow::WaitUntil` timer wakes — even sysinfo's rayon pool is compiled out
 - **Launch at login toggle**: right-click menu check item backed by `SMAppService` (when running as the `.app` bundle)
 - **Flat memory by design**: one `Sampler` owns all sampling state, one `Renderer` owns all drawing state; every tick's ObjC temporaries die in an explicit autorelease pool
-- **Measured footprint**: ~11 MB (`phys_footprint`, the Activity Monitor number) on an M-series MacBook Pro — and it stays there
+- **Measured footprint**: 11 MB at launch, settling at a flat ~20 MB steady state (`phys_footprint`, the Activity Monitor number) on an M-series MacBook Pro — soak-profiled leak-free with `leaks` (live heap ~6.5 MB; the rest is one-time allocator high-water, and it stops moving)
 - **Modular metrics**: adding a stat is an enum variant + a match arm — nothing else changes
 - **Tiny binary**: ~800 KB release build (`opt-level = "z"`, LTO, stripped)
 
@@ -138,13 +138,13 @@ The loop itself:
 
 **Why the display is an image:** NSStatusItem text titles are vertically centered by the button cell with no working override, and a single-line title can't stack two rows. So the `Renderer` draws both lines into an `NSImage` each tick — glyph positions computed from real font metrics (cap height, descent), colors per severity, Retina-sharp. The button can't fight pixels.
 
-**Why memory stays flat:** one `Sampler` owns the `sysinfo::System` (created empty — no process table), the component list, and a single battery handle refreshed in place; one `Renderer` owns the font and four prebuilt attribute dictionaries. Per tick only the strings and the image are created, and an explicit `autoreleasepool` kills them before the loop sleeps again.
+**Why memory stays flat:** one `Sampler` owns the `sysinfo::System` (created empty — no process table), the component list, and a single battery handle refreshed in place; one `Renderer` owns the font and four prebuilt attribute dictionaries. Per tick only the strings and the image are created, and an explicit `autoreleasepool` kills them before the loop sleeps again. The footprint rises from 11 MB at launch to ~20 MB as the malloc zones reach their high-water mark, then stops: a profiled soak shows ~6.5 MB live heap, no featherbar leaks, and a flat line from there.
 
 Measure it yourself while it runs (same metric Activity Monitor shows):
 
 ```bash
 footprint $(pgrep -x featherbar)
-# featherbar [pid]: 64-bit    Footprint: 11 MB
+# featherbar [pid]: 64-bit    Footprint: 11 MB   (launch; settles at ~20 MB and stays flat)
 ```
 
 </details>
