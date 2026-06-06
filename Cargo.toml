@@ -13,6 +13,7 @@ sysinfo = "0.33"
 # Battery power draw in watts (energy_rate, SI units). Maintained fork of
 # rust-battery; requires Rust 1.89+. Library name is `starship_battery`.
 starship-battery = "0.10"
+objc2-service-management = "0.3.2"
 
 # A release build keeps the binary small.
 [profile.release]

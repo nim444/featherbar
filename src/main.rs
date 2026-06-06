@@ -6,13 +6,15 @@
 //!   and no borrow-checker pain. RSS stays in the single-digit MB.
 //! - Add a metric by adding a `Metric` variant + a `Sampler::fragment` arm.
 
+mod login_item;
+
 use std::time::{Duration, Instant};
 
 use sysinfo::System;
 use tao::event::{Event, StartCause};
 use tao::event_loop::{ControlFlow, EventLoopBuilder};
 use tao::platform::macos::{ActivationPolicy, EventLoopExtMacOS};
-use tray_icon::menu::{Menu, MenuEvent, MenuId, MenuItem};
+use tray_icon::menu::{CheckMenuItem, Menu, MenuEvent, MenuId, MenuItem};
 use tray_icon::{TrayIcon, TrayIconBuilder};
 
 /// How often to refresh the reading.
@@ -93,10 +95,25 @@ fn main() {
     // Prime CPU so the first reading is a real delta, not 0%/garbage.
     sampler.sys.refresh_cpu_usage();
 
-    // One-item right-click menu so the app is quittable.
+    // Right-click menu: launch-at-login toggle + Quit.
+    // SMAppService needs a real .app bundle (scripts/bundle.sh); from a bare
+    // `cargo run` binary the item is shown disabled so it can't silently fail.
+    let bundled = login_item::is_bundled();
+    let login_item = CheckMenuItem::new(
+        if bundled {
+            "Launch at login"
+        } else {
+            "Launch at login (needs .app build)"
+        },
+        bundled,
+        bundled && login_item::is_enabled(),
+        None,
+    );
+    let login_id: MenuId = login_item.id().clone();
     let quit_item = MenuItem::new("Quit", true, None);
     let quit_id: MenuId = quit_item.id().clone();
     let menu = Menu::new();
+    menu.append(&login_item).expect("failed to build menu");
     menu.append(&quit_item).expect("failed to build menu");
 
     // Created lazily on StartCause::Init (must exist while loop is running).
@@ -114,10 +131,22 @@ fn main() {
             *control_flow = ControlFlow::WaitUntil(Instant::now() + REFRESH);
         }
         Event::NewEvents(StartCause::ResumeTimeReached { .. }) => {
-            if let Ok(ev) = MenuEvent::receiver().try_recv() {
+            while let Ok(ev) = MenuEvent::receiver().try_recv() {
                 if ev.id == quit_id {
                     *control_flow = ControlFlow::Exit;
                     return;
+                }
+                if ev.id == login_id {
+                    // The native menu already flipped the checkmark; make the
+                    // registration match it, and re-sync on failure.
+                    let want = login_item.is_checked();
+                    match login_item::set_enabled(want) {
+                        Ok(now) => login_item.set_checked(now),
+                        Err(e) => {
+                            eprintln!("launch-at-login: {e}");
+                            login_item.set_checked(login_item::is_enabled());
+                        }
+                    }
                 }
             }
             if let Some(t) = &tray {
