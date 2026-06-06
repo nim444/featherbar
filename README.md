@@ -19,12 +19,11 @@ ____
 
 A tiny, modular menu-bar (NSStatusItem) app in Rust that shows live stats on two compact, color-coded lines:
 
-```
-C  12%   8W
-R  47%  38°C
-```
+<div align="center">
 
 ![featherbar in the menu bar](https://raw.githubusercontent.com/nim444/featherbar/main/assets/menubar.png)
+
+</div>
 
 Updates every 2 seconds. Right-click for launch-at-login and Quit. That's the whole app — and that's the point.
 
