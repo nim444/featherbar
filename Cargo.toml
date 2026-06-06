@@ -1,9 +1,9 @@
 [package]
 name = "featherbar"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 rust-version = "1.89"
-description = "Featherweight macOS menu-bar system monitor — RAM, CPU, and power watts with zero background threads and flat memory"
+description = "Featherweight macOS menu-bar system monitor — CPU, RAM, power, and temperature on two color-coded lines, zero background threads, flat memory"
 license = "Apache-2.0"
 repository = "https://github.com/nim444/featherbar"
 readme = "README.md"
@@ -16,12 +16,16 @@ exclude = ["assets/", "scripts/", ".github/"]
 tray-icon = "0.21"
 # Main-thread event loop. tray-icon's macOS path requires a running main-thread loop.
 tao = "0.34"
-# CPU / RAM stats. used_memory()/total_memory() return bytes since 0.30.
-sysinfo = "0.33"
+# CPU / RAM / temperature stats. Default features off: `multithread` would
+# pull in a rayon thread pool — this app runs zero background threads.
+sysinfo = { version = "0.33", default-features = false, features = ["system", "component"] }
 # Battery power draw in watts (energy_rate, SI units). Maintained fork of
 # rust-battery; requires Rust 1.89+. Library name is `starship_battery`.
 starship-battery = "0.10"
 objc2-service-management = "0.3.2"
+objc2 = "0.6.4"
+objc2-app-kit = { version = "0.3.2", features = ["NSApplication", "NSWindow", "NSView", "NSControl", "NSButton", "NSStatusBarButton", "NSFont", "NSParagraphStyle", "NSAttributedString", "NSText", "NSResponder", "NSFontDescriptor", "NSColor", "NSImage", "NSStringDrawing", "NSGraphics", "NSGraphicsContext", "NSCell"] }
+objc2-foundation = { version = "0.3.2", features = ["NSString", "NSDictionary", "NSAttributedString", "NSValue"] }
 
 # A release build keeps the binary small.
 [profile.release]

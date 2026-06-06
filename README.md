@@ -17,33 +17,40 @@ ____
 
 </div>
 
-A tiny, modular menu-bar (NSStatusItem) app in Rust that shows live stats as plain text in your menu bar:
+A tiny, modular menu-bar (NSStatusItem) app in Rust that shows live stats on two compact, color-coded lines:
+
+```
+C  12%   8W
+R  47%  38°C
+```
 
 ![featherbar in the menu bar](https://raw.githubusercontent.com/nim444/featherbar/main/assets/menubar.png)
 
-Updates every 2 seconds. Right-click to quit. That's the whole app — and that's the point.
+Updates every 2 seconds. Right-click for launch-at-login and Quit. That's the whole app — and that's the point.
 
-> **The premise.** Most menu-bar monitors slowly become what they measure: background threads, growing buffers, tens of MB of RSS. featherbar runs **zero background threads** and allocates **nothing that accumulates** — one main-thread event loop wakes on a timer, takes one sample, rewrites the title, and re-arms. Memory stays flat for as long as it runs.
+> **The premise.** Most menu-bar monitors slowly become what they measure: background threads, growing buffers, tens of MB of RSS. featherbar runs **zero background threads** and allocates **nothing that accumulates** — one main-thread event loop wakes on a timer, takes one sample, redraws the display, and re-arms. Memory stays flat for as long as it runs.
 
 ## Features
 
-- **Live stats in the menu bar**: RAM %, CPU %, and battery discharge watts, refreshed every 2s
+- **Live stats on two stacked lines**: CPU % + battery watts on top, RAM % + CPU temperature below, refreshed every 2s
+- **Color-coded severity**: each value renders green / orange / red by its own thresholds (CPU 40/70%, RAM 60/80%, power 10/20W, temp 60/80°C); labels stay neutral
+- **Perfectly gridded**: SF Mono with fixed-width value fields — nothing shifts when a value changes digit count
 - **No Dock icon, no window**: `ActivationPolicy::Accessory` — it exists only in the menu bar
-- **No background threads**: a single main-thread `tao` event loop with `ControlFlow::WaitUntil` timer wakes
+- **No background threads**: a single main-thread `tao` event loop with `ControlFlow::WaitUntil` timer wakes — even sysinfo's rayon pool is compiled out
 - **Launch at login toggle**: right-click menu check item backed by `SMAppService` (when running as the `.app` bundle)
-- **Flat memory by design**: one `Sampler` owns all state; nothing grows, nothing leaks
-- **Measured footprint**: ~16–19 MB (`phys_footprint`, the Activity Monitor number) on an M-series MacBook Pro — and it stays there
+- **Flat memory by design**: one `Sampler` owns all sampling state, one `Renderer` owns all drawing state; every tick's ObjC temporaries die in an explicit autorelease pool
+- **Measured footprint**: ~11 MB (`phys_footprint`, the Activity Monitor number) on an M-series MacBook Pro — and it stays there
 - **Modular metrics**: adding a stat is an enum variant + a match arm — nothing else changes
 - **Tiny binary**: ~800 KB release build (`opt-level = "z"`, LTO, stripped)
 
 ```mermaid
 flowchart LR
     T["Timer wake<br/>(every 2s)"] --> S["Sampler<br/>one owner, no allocation"]
+    S --> C["CPU % + temp<br/>sysinfo"]
     S --> R["RAM %<br/>sysinfo"]
-    S --> C["CPU %<br/>sysinfo"]
     S --> P["Power W<br/>starship-battery"]
-    R --> O["NSStatusItem title<br/>RAM 47% · CPU 12% · 8.3W"]
-    C --> O
+    C --> O["Renderer<br/>two color-coded lines<br/>drawn into the status icon"]
+    R --> O
     P --> O
     O --> T
 ```
@@ -98,19 +105,20 @@ Right-click the menu-bar reading and check **Launch at login**. The toggle uses 
 
 ```
 ├── src/
-│   ├── main.rs          # Metric enum, Sampler, event loop, menu
+│   ├── main.rs          # Metric enum, Sampler, thresholds, event loop, menu
+│   ├── two_line.rs      # Renderer: two color-coded lines drawn into the icon
 │   └── login_item.rs    # Launch-at-login via SMAppService
 ├── scripts/
 │   └── bundle.sh        # Assemble Featherbar.app from the release binary
 ├── assets/
 │   └── menubar.png
-├── Cargo.toml           # 5 dependencies, size-optimized release profile
+├── Cargo.toml           # size-optimized release profile, trimmed features
 ├── Cargo.lock
 ├── LICENSE              # Apache-2.0
 └── README.md
 ```
 
-Two source files on purpose. The app is small enough that splitting it up further would only add indirection.
+Three source files on purpose. The app is small enough that splitting it up further would only add indirection.
 
 </details>
 
@@ -125,17 +133,19 @@ The hard macOS constraints this design satisfies:
 
 The loop itself:
 
-1. `StartCause::Init` — create the `TrayIcon` with the first reading, arm a 2s `ControlFlow::WaitUntil` timer.
-2. `StartCause::ResumeTimeReached` — drain the menu-event channel (Quit?), take one sample per enabled metric, `set_title`, re-arm.
+1. `StartCause::Init` — create the tray icon, locate its `NSStatusBarButton`, draw the first reading, arm a 2s `ControlFlow::WaitUntil` timer.
+2. `StartCause::ResumeTimeReached` — drain the menu-event channel (Quit? login toggle?), take one sample per enabled metric, redraw, re-arm.
 3. Nothing else. No threads, no channels to background workers, no history buffers.
 
-A single `Sampler` struct owns the `sysinfo::System` and the battery manager, so per-tick work reuses the same state and RSS stays flat.
+**Why the display is an image:** NSStatusItem text titles are vertically centered by the button cell with no working override, and a single-line title can't stack two rows. So the `Renderer` draws both lines into an `NSImage` each tick — glyph positions computed from real font metrics (cap height, descent), colors per severity, Retina-sharp. The button can't fight pixels.
+
+**Why memory stays flat:** one `Sampler` owns the `sysinfo::System` (created empty — no process table), the component list, and a single battery handle refreshed in place; one `Renderer` owns the font and four prebuilt attribute dictionaries. Per tick only the strings and the image are created, and an explicit `autoreleasepool` kills them before the loop sleeps again.
 
 Measure it yourself while it runs (same metric Activity Monitor shows):
 
 ```bash
 footprint $(pgrep -x featherbar)
-# featherbar [pid]: 64-bit    Footprint: 16 MB
+# featherbar [pid]: 64-bit    Footprint: 11 MB
 ```
 
 </details>
@@ -151,16 +161,19 @@ enum Metric {
     Ram,
     Cpu,
     Power,
+    Temp,
     DiskFree, // new
 }
 
-// 2. Add a match arm in Sampler::fragment
+// 2. Add a match arm in Sampler::fragment that pushes label/value Segs
 Metric::DiskFree => {
-    // sample, format, return a short String like "SSD 312G"
+    out.push(Seg::new("D", Level::Neutral));
+    out.push(Seg::new(format!("{}G", pad(free_gb, 3, 0)), disk_level(free_gb)));
 }
 
-// 3. Enable it
-const ENABLED: &[Metric] = &[Metric::Ram, Metric::Cpu, Metric::Power, Metric::DiskFree];
+// 3. Put it on a line
+const LINE_TOP: &[Metric] = &[Metric::Cpu, Metric::Power];
+const LINE_BOTTOM: &[Metric] = &[Metric::Ram, Metric::Temp, Metric::DiskFree];
 ```
 
 Good candidates with maintained crates and no reverse engineering: network up/down (`sysinfo` networks), disk free (`sysinfo` disks), battery % (`starship_battery`).
@@ -170,9 +183,10 @@ Good candidates with maintained crates and no reverse engineering: network up/do
 <details>
   <summary>6. Behavior Notes (not bugs)</summary>
 
-- **Power reads `0.0W` on AC or at full charge.** The watt figure is the battery charge/discharge rate (`energy_rate`), so it is only meaningful while running on battery. It is NOT total system/SoC power.
-- **Power may read `0.0W` for a minute right after unplugging.** The battery fuel gauge reports `InstantAmperage = 0` until real discharge current registers — featherbar shows exactly what the SMC reports. Verify the OS-side value with `ioreg -rn AppleSmartBattery | grep InstantAmperage`.
-- **`—W` is shown** when no battery manager is available.
+- **Power reads `0W` on AC or at full charge.** The watt figure is the battery charge/discharge rate (`energy_rate`), so it is only meaningful while running on battery. It is NOT total system/SoC power.
+- **Power may read `0W` for a minute right after unplugging.** The battery fuel gauge reports `InstantAmperage = 0` until real discharge current registers — featherbar shows exactly what the SMC reports. Verify the OS-side value with `ioreg -rn AppleSmartBattery | grep InstantAmperage`.
+- **`—W` is shown** when no battery is available; **`—°C`** when no die sensor is found.
+- **Temperature is the hottest CPU die sensor** (`PMU tdie*`), which is what "CPU temp" colloquially means — individual sensors run cooler.
 - **The first CPU sample may be off** for one tick until the second refresh lands.
 
 </details>
@@ -180,7 +194,7 @@ Good candidates with maintained crates and no reverse engineering: network up/do
 <details>
   <summary>7. Scope — what featherbar will not do</summary>
 
-Temperature, fans, and total SoC/package power are **out of scope**. They require undocumented IOKit/SMC keys that break with each new Apple Silicon generation — the exact maintenance treadmill this project exists to avoid. If you need those, [Stats](https://github.com/exelban/stats) does them well and pays that maintenance cost for you.
+Fans and total SoC/package power are **out of scope**. They require undocumented IOKit/SMC keys that break with each new Apple Silicon generation — the exact maintenance treadmill this project exists to avoid. (CPU temperature *is* shown, but through `sysinfo`'s maintained Components API — the PMU die sensors — not hand-rolled SMC keys.) If you need fans or package watts, [Stats](https://github.com/exelban/stats) does them well and pays that maintenance cost for you.
 
 </details>
 
