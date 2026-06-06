@@ -19,9 +19,9 @@ tao = "0.34"
 # CPU / RAM / temperature stats. Default features off: `multithread` would
 # pull in a rayon thread pool — this app runs zero background threads.
 sysinfo = { version = "0.33", default-features = false, features = ["system", "component"] }
-# Battery power draw in watts (energy_rate, SI units). Maintained fork of
-# rust-battery; requires Rust 1.89+. Library name is `starship_battery`.
-starship-battery = "0.10"
+# CFDictionary/CFString/CFArray wrappers for the IOReport FFI in src/socpower.rs.
+# Apple Silicon is the only supported target, so no need to gate this per arch.
+core-foundation = "0.10"
 objc2-service-management = "0.3.2"
 objc2 = "0.6.4"
 objc2-app-kit = { version = "0.3.2", features = ["NSApplication", "NSWindow", "NSView", "NSControl", "NSButton", "NSStatusBarButton", "NSFont", "NSParagraphStyle", "NSAttributedString", "NSText", "NSResponder", "NSFontDescriptor", "NSColor", "NSImage", "NSStringDrawing", "NSGraphics", "NSGraphicsContext", "NSCell"] }

@@ -7,11 +7,13 @@
 //! - Add a metric by adding a `Metric` variant + a `Sampler::fragment` arm.
 
 mod login_item;
+mod socpower;
 mod two_line;
 
 use std::time::{Duration, Instant};
 
 use objc2::MainThreadMarker;
+use socpower::SocPower;
 use sysinfo::{Components, System};
 use tao::event::{Event, StartCause};
 use tao::event_loop::{ControlFlow, EventLoopBuilder};
@@ -25,13 +27,14 @@ const REFRESH: Duration = Duration::from_secs(2);
 
 /// Which stats to show. Add a variant + a `fragment` arm to extend.
 /// CPU temperature comes from sysinfo's Components (PMU die sensors) — a
-/// maintained crate, not hand-rolled SMC keys. Total SoC package power stays
-/// out of scope (undocumented IOKit, breaks per chip generation).
+/// maintained crate, not hand-rolled SMC keys. Power comes from IOReport's
+/// "Energy Model" channels (CPU + GPU + ANE) via [`socpower`] — the same
+/// channels `powermetrics` aggregates as "Combined Power".
 #[derive(Clone, Copy)]
 enum Metric {
     Ram,
     Cpu,
-    Power, // battery discharge wattage; only meaningful while on battery
+    Power, // SoC package watts (CPU+GPU+ANE) from IOReport
     Temp,  // hottest CPU die sensor (PMU tdie*), via sysinfo Components
 }
 
@@ -43,9 +46,10 @@ const LINE_BOTTOM: &[Metric] = &[Metric::Ram, Metric::Temp];
 struct Sampler {
     sys: System,
     components: Components,
-    /// Manager + the one battery, refreshed in place each tick — no per-tick
-    /// re-enumeration of IOKit battery devices.
-    battery: Option<(starship_battery::Manager, starship_battery::Battery)>,
+    /// IOReport subscription for "Energy Model" channels. `None` only if the
+    /// private framework refused to subscribe (shouldn't happen on a stock
+    /// Apple Silicon Mac, but we degrade gracefully to "—W" if it does).
+    soc_power: Option<SocPower>,
 }
 
 impl Sampler {
@@ -55,14 +59,11 @@ impl Sampler {
         // list and more, which we'd carry in RSS for nothing.
         let sys = System::new();
         let components = Components::new_with_refreshed_list();
-        let battery = starship_battery::Manager::new().ok().and_then(|mgr| {
-            let bat = mgr.batteries().ok()?.next()?.ok()?;
-            Some((mgr, bat))
-        });
+        let soc_power = SocPower::new();
         Self {
             sys,
             components,
-            battery,
+            soc_power,
         }
     }
 
@@ -90,11 +91,9 @@ impl Sampler {
                 out.push(Seg::new(format!("{}%", pad(pct, 3, 0)), pct_level(pct)));
             }
             Metric::Power => {
-                let watts = self.battery.as_mut().and_then(|(mgr, bat)| {
-                    mgr.refresh(bat).ok()?;
-                    // energy_rate() is a uom Power quantity; .value is watts.
-                    Some(bat.energy_rate().value as f64)
-                });
+                // None on the first tick (the delta needs two samples) and
+                // if IOReport refused to subscribe at startup.
+                let watts = self.soc_power.as_mut().and_then(|p| p.watts());
                 match watts {
                     Some(w) => {
                         out.push(Seg::new(format!("{}W", pad(w, 4, 0)), watt_level(w)));
@@ -160,7 +159,8 @@ fn ram_level(pct: f64) -> Level {
     }
 }
 
-/// Battery draw: green under 10W, orange 10-20W, red above (heavy drain).
+/// SoC package draw (CPU+GPU+ANE): green under 10W (idle/light), orange
+/// 10-20W (sustained background work), red above (compile/render territory).
 fn watt_level(watts: f64) -> Level {
     match watts {
         w if w < 10.0 => Level::Good,
