@@ -2,6 +2,10 @@
 ![macOS](https://img.shields.io/badge/mac%20os-000000?style=for-the-badge&logo=macos&logoColor=F0F0F0)
 ![Apple Silicon](https://img.shields.io/badge/apple%20silicon-333333?style=for-the-badge&logo=apple&logoColor=white)
 
+[![crates.io](https://img.shields.io/crates/v/featherbar.svg)](https://crates.io/crates/featherbar)
+[![downloads](https://img.shields.io/crates/d/featherbar.svg)](https://crates.io/crates/featherbar)
+[![license](https://img.shields.io/github/license/nim444/featherbar)](LICENSE)
+
 ____
 <br>
 
