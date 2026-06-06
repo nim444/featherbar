@@ -24,8 +24,8 @@ sysinfo = { version = "0.33", default-features = false, features = ["system", "c
 core-foundation = "0.10"
 objc2-service-management = "0.3.2"
 objc2 = "0.6.4"
-objc2-app-kit = { version = "0.3.2", features = ["NSApplication", "NSWindow", "NSView", "NSControl", "NSButton", "NSStatusBarButton", "NSFont", "NSParagraphStyle", "NSAttributedString", "NSText", "NSResponder", "NSFontDescriptor", "NSColor", "NSImage", "NSStringDrawing", "NSGraphics", "NSGraphicsContext", "NSCell"] }
-objc2-foundation = { version = "0.3.2", features = ["NSString", "NSDictionary", "NSAttributedString", "NSValue"] }
+objc2-app-kit = { version = "0.3.2", features = ["NSApplication", "NSWindow", "NSView", "NSControl", "NSButton", "NSStatusBarButton", "NSFont", "NSParagraphStyle", "NSAttributedString", "NSText", "NSResponder", "NSFontDescriptor", "NSColor", "NSImage", "NSStringDrawing", "NSGraphics", "NSGraphicsContext", "NSCell", "NSAppearance"] }
+objc2-foundation = { version = "0.3.2", features = ["NSString", "NSDictionary", "NSArray", "NSAttributedString", "NSValue"] }
 
 # A release build keeps the binary small.
 [profile.release]

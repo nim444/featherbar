@@ -15,10 +15,14 @@ use objc2::rc::Retained;
 use objc2::runtime::AnyObject;
 use objc2::{AnyThread, MainThreadMarker, Message};
 use objc2_app_kit::{
-    NSApplication, NSAttributedStringNSStringDrawing, NSColor, NSFont, NSFontAttributeName,
-    NSForegroundColorAttributeName, NSImage, NSStatusBarButton, NSView,
+    NSAppearanceCustomization, NSAppearanceName, NSAppearanceNameAccessibilityHighContrastAqua,
+    NSAppearanceNameAccessibilityHighContrastDarkAqua, NSAppearanceNameAqua,
+    NSAppearanceNameDarkAqua, NSApplication, NSAttributedStringNSStringDrawing, NSColor, NSFont,
+    NSFontAttributeName, NSForegroundColorAttributeName, NSImage, NSStatusBarButton, NSView,
 };
-use objc2_foundation::{NSDictionary, NSMutableAttributedString, NSPoint, NSSize, NSString};
+use objc2_foundation::{
+    NSArray, NSDictionary, NSMutableAttributedString, NSObjectProtocol, NSPoint, NSSize, NSString,
+};
 
 /// Title font size (SF Mono, Medium).
 const FONT_SIZE: f64 = 12.0;
@@ -86,21 +90,74 @@ pub fn status_button(mtm: MainThreadMarker) -> Option<Retained<NSStatusBarButton
     None
 }
 
-fn color(level: Level) -> Retained<NSColor> {
+/// Picks the foreground color for one severity level under one menu bar
+/// appearance. Neutral labels need to track the menu bar's actual light/dark
+/// state (not the app's, which `NSColor::labelColor` would key off — they
+/// disagree when a dark wallpaper darkens the menu bar on a Light-mode
+/// system, leaving black labels invisible). The semantic system colors are
+/// tuned by Apple for both menu-bar appearances and don't need to swap.
+fn color(level: Level, dark: bool) -> Retained<NSColor> {
     match level {
-        // labelColor adapts to the menu bar's light/dark appearance.
-        Level::Neutral => NSColor::labelColor(),
+        Level::Neutral if dark => NSColor::whiteColor(),
+        Level::Neutral => NSColor::blackColor(),
         Level::Good => NSColor::systemGreenColor(),
         Level::Warn => NSColor::systemOrangeColor(),
         Level::Crit => NSColor::systemRedColor(),
     }
 }
 
+fn build_attrs(
+    font: &NSFont,
+    dark: bool,
+) -> [Retained<NSDictionary<NSString, AnyObject>>; 4] {
+    [Level::Neutral, Level::Good, Level::Warn, Level::Crit].map(|level| {
+        NSDictionary::from_retained_objects(
+            &[unsafe { NSFontAttributeName }, unsafe {
+                NSForegroundColorAttributeName
+            }],
+            &[
+                Retained::into_super(Retained::into_super(font.retain())),
+                Retained::into_super(Retained::into_super(color(level, dark))),
+            ],
+        )
+    })
+}
+
+/// Does the status button currently want light-on-dark glyphs?
+/// `bestMatchFromAppearancesWithNames` collapses the (Aqua, DarkAqua,
+/// HighContrastAqua, HighContrastDarkAqua) matrix down to whichever of
+/// those four we passed in is closest — we then check whether the winner
+/// is one of the dark ones. The HighContrast variants matter because
+/// users with "Increase contrast" enabled get those, not plain DarkAqua.
+fn is_dark_menu_bar(button: &NSStatusBarButton) -> bool {
+    let appearance = button.effectiveAppearance();
+    let names = NSArray::from_slice(&[
+        unsafe { NSAppearanceNameAqua },
+        unsafe { NSAppearanceNameDarkAqua },
+        unsafe { NSAppearanceNameAccessibilityHighContrastAqua },
+        unsafe { NSAppearanceNameAccessibilityHighContrastDarkAqua },
+    ]);
+    let best: Option<Retained<NSAppearanceName>> =
+        appearance.bestMatchFromAppearancesWithNames(&names);
+    match best {
+        Some(name) => {
+            let dark_aqua: &NSAppearanceName = unsafe { NSAppearanceNameDarkAqua };
+            let dark_high: &NSAppearanceName =
+                unsafe { NSAppearanceNameAccessibilityHighContrastDarkAqua };
+            name.isEqual(Some(dark_aqua)) || name.isEqual(Some(dark_high))
+        }
+        None => false,
+    }
+}
+
 /// Immutable drawing state built once at startup: the font, its vertical
-/// metrics, and one attribute dictionary per severity level. Per tick only
-/// the attributed strings and the image are created (and autoreleased).
+/// metrics, and one attribute dictionary per (appearance, severity) pair.
+/// Per tick only the attributed strings and the image are created (and
+/// autoreleased) — picking which attribute table to use is an index.
 pub struct Renderer {
-    attrs: [Retained<NSDictionary<NSString, AnyObject>>; 4],
+    /// `attrs[is_dark as usize][level as usize]`. Two tables of four, so the
+    /// per-tick render is a pointer lookup, not a color/dict rebuild.
+    attrs: [[Retained<NSDictionary<NSString, AnyObject>>; 4]; 2],
     y_top: f64,
     y_bottom: f64,
 }
@@ -113,17 +170,7 @@ impl Renderer {
             objc2_app_kit::NSFontWeightMedium
         });
 
-        let attrs = [Level::Neutral, Level::Good, Level::Warn, Level::Crit].map(|level| {
-            NSDictionary::from_retained_objects(
-                &[unsafe { NSFontAttributeName }, unsafe {
-                    NSForegroundColorAttributeName
-                }],
-                &[
-                    Retained::into_super(Retained::into_super(font.retain())),
-                    Retained::into_super(Retained::into_super(color(level))),
-                ],
-            )
-        });
+        let attrs = [build_attrs(&font, false), build_attrs(&font, true)];
 
         // Center the *visible* glyphs: our text is caps/digits only (no
         // descenders), so each line's ink spans capHeight starting at the
@@ -140,13 +187,17 @@ impl Renderer {
     }
 
     /// Build one line's attributed string from its segments.
-    fn line_string(&self, segs: &[Seg]) -> Retained<NSMutableAttributedString> {
+    fn line_string(
+        &self,
+        attrs: &[Retained<NSDictionary<NSString, AnyObject>>; 4],
+        segs: &[Seg],
+    ) -> Retained<NSMutableAttributedString> {
         let astr = NSMutableAttributedString::new();
         for seg in segs {
             let run = unsafe {
                 objc2_foundation::NSAttributedString::new_with_attributes(
                     &NSString::from_str(&seg.text),
-                    &self.attrs[seg.level as usize],
+                    &attrs[seg.level as usize],
                 )
             };
             astr.appendAttributedString(&run);
@@ -156,8 +207,12 @@ impl Renderer {
 
     /// Render the two stacked lines into an image and set it on the button.
     pub fn set_title(&self, button: &NSStatusBarButton, top: &[Seg], bottom: &[Seg]) {
-        let l_top = self.line_string(top);
-        let l_bottom = self.line_string(bottom);
+        // Querying appearance each tick costs one ObjC call and reacts to
+        // wallpaper / Dark Mode / "Increase contrast" changes within one
+        // refresh interval (2 s) — well within the tick budget.
+        let attrs = &self.attrs[is_dark_menu_bar(button) as usize];
+        let l_top = self.line_string(attrs, top);
+        let l_bottom = self.line_string(attrs, bottom);
 
         let width = l_top.size().width.max(l_bottom.size().width).ceil();
 
