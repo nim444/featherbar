@@ -29,6 +29,7 @@ Updates every 2 seconds. Right-click to quit. That's the whole app — and that'
 - **No Dock icon, no window**: `ActivationPolicy::Accessory` — it exists only in the menu bar
 - **No background threads**: a single main-thread `tao` event loop with `ControlFlow::WaitUntil` timer wakes
 - **Flat memory by design**: one `Sampler` owns all state; nothing grows, nothing leaks
+- **Measured footprint**: ~16–19 MB (`phys_footprint`, the Activity Monitor number) on an M-series MacBook Pro — and it stays there
 - **Modular metrics**: adding a stat is an enum variant + a match arm — nothing else changes
 - **Tiny binary**: ~800 KB release build (`opt-level = "z"`, LTO, stripped)
 
@@ -113,6 +114,13 @@ The loop itself:
 3. Nothing else. No threads, no channels to background workers, no history buffers.
 
 A single `Sampler` struct owns the `sysinfo::System` and the battery manager, so per-tick work reuses the same state and RSS stays flat.
+
+Measure it yourself while it runs (same metric Activity Monitor shows):
+
+```bash
+footprint $(pgrep -x featherbar)
+# featherbar [pid]: 64-bit    Footprint: 16 MB
+```
 
 </details>
 
