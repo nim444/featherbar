@@ -149,12 +149,12 @@ fn pct_level(pct: f64) -> Level {
     }
 }
 
-/// RAM percent runs hotter than CPU by nature: green below 60, orange 60-80,
+/// RAM percent runs hotter than CPU by nature: green below 75, orange 75-85,
 /// red above.
 fn ram_level(pct: f64) -> Level {
     match pct {
-        p if p < 60.0 => Level::Good,
-        p if p < 80.0 => Level::Warn,
+        p if p < 75.0 => Level::Good,
+        p if p < 85.0 => Level::Warn,
         _ => Level::Crit,
     }
 }
