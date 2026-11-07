@@ -9,9 +9,11 @@ cargo build --release
 
 APP=target/Featherbar.app
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 
 cp target/release/featherbar "$APP/Contents/MacOS/featherbar"
+# Shown in the Dock and Cmd-Tab while the graphs window is open.
+cp assets/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
 cat > "$APP/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -24,6 +26,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
     <string>Featherbar</string>
     <key>CFBundleDisplayName</key>
     <string>Featherbar</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
     <key>CFBundleExecutable</key>
     <string>featherbar</string>
     <key>CFBundlePackageType</key>

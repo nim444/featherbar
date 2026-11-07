@@ -22,10 +22,12 @@ sysinfo = { version = "0.33", default-features = false, features = ["system", "c
 # CFDictionary/CFString/CFArray wrappers for the IOReport FFI in src/socpower.rs.
 # Apple Silicon is the only supported target, so no need to gate this per arch.
 core-foundation = "0.10"
+# mmap/msync for the fixed-size history file (src/history.rs).
+libc = "0.2"
 objc2-service-management = "0.3.2"
 objc2 = "0.6.4"
-objc2-app-kit = { version = "0.3.2", features = ["NSApplication", "NSWindow", "NSView", "NSControl", "NSButton", "NSStatusBarButton", "NSFont", "NSParagraphStyle", "NSAttributedString", "NSText", "NSResponder", "NSFontDescriptor", "NSColor", "NSImage", "NSStringDrawing", "NSGraphics", "NSGraphicsContext", "NSCell", "NSAppearance"] }
-objc2-foundation = { version = "0.3.2", features = ["NSString", "NSDictionary", "NSArray", "NSAttributedString", "NSValue"] }
+objc2-app-kit = { version = "0.3.2", features = ["NSApplication", "NSWindow", "NSView", "NSControl", "NSButton", "NSStatusBarButton", "NSFont", "NSParagraphStyle", "NSAttributedString", "NSText", "NSResponder", "NSFontDescriptor", "NSColor", "NSImage", "NSStringDrawing", "NSGraphics", "NSGraphicsContext", "NSCell", "NSAppearance", "NSSegmentedControl", "NSBezierPath", "NSTrackingArea", "NSEvent", "NSWindowRestoration", "NSBitmapImageRep", "NSImageRep"] }
+objc2-foundation = { version = "0.3.2", features = ["NSString", "NSDictionary", "NSArray", "NSAttributedString", "NSValue", "NSUserDefaults", "NSGeometry", "NSData", "NSNotification"] }
 
 # A release build keeps the binary small.
 [profile.release]
